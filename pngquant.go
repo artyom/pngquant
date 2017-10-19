@@ -11,7 +11,6 @@ import (
 	"os"
 
 	"github.com/artyom/autoflags"
-	"github.com/soniakeys/quant"
 	"github.com/soniakeys/quant/median"
 )
 
@@ -54,10 +53,9 @@ func do(outName, inName string, n int, dither bool) error {
 	switch {
 	case dither:
 		var q draw.Quantizer = median.Quantizer(n)
-		var d draw.Drawer = quant.Sierra24A{}
 		b := img.Bounds()
 		imgp = image.NewPaletted(b, q.Quantize(make(color.Palette, 0, n), img))
-		d.Draw(imgp, b, img, b.Min)
+		draw.FloydSteinberg.Draw(imgp, b, img, b.Min)
 	default:
 		imgp = median.Quantizer(n).Paletted(img)
 	}
