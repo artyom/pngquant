@@ -20,15 +20,16 @@ func main() {
 		Out string `flag:"out,output file"`
 		N   int    `flag:"n,number of colors (up to 256)"`
 		ND  bool   `flag:"nodither,do not apply dithering"`
+		T   bool   `flag:"trans,keep transparency if present"`
 	}{N: 256}
 	autoflags.Parse(&args)
-	if err := do(args.Out, args.In, args.N, !args.ND); err != nil {
+	if err := do(args.Out, args.In, args.N, !args.ND, args.T); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func do(outName, inName string, n int, dither bool) error {
+func do(outName, inName string, n int, dither, keepTrans bool) error {
 	if n <= 0 || n > 256 {
 		return fmt.Errorf("unsupported number of colors: %d", n)
 	}
@@ -44,20 +45,27 @@ func do(outName, inName string, n int, dither bool) error {
 	if err != nil {
 		return err
 	}
+	var withTransparency bool
+	if op, ok := img.(interface{ Opaque() bool }); keepTrans && ok {
+		withTransparency = !op.Opaque()
+	}
 	out, err := os.Create(outName)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
-	var imgp *image.Paletted
+	pal := make(color.Palette, 0, n)
+	if withTransparency {
+		pal = append(pal, color.Transparent)
+	}
+	pal = median.Quantizer(n).Quantize(pal, img)
+	b := img.Bounds()
+	imgp := image.NewPaletted(b, pal)
 	switch {
 	case dither:
-		var q draw.Quantizer = median.Quantizer(n)
-		b := img.Bounds()
-		imgp = image.NewPaletted(b, q.Quantize(make(color.Palette, 0, n), img))
 		draw.FloydSteinberg.Draw(imgp, b, img, b.Min)
 	default:
-		imgp = median.Quantizer(n).Paletted(img)
+		draw.Draw(imgp, b, img, b.Min, draw.Over)
 	}
 	if err := (&png.Encoder{CompressionLevel: png.BestCompression}).Encode(out, imgp); err != nil {
 		os.Remove(out.Name())
